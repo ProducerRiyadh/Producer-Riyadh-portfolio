@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Producer Riyadh — Beats Hub</title>
+<link rel="icon" href="data:," />
+<style>
+  :root{
+    --bg:#0b0b0c; --card:#111214; --muted:#9aa0a6; --accent:#1fb6ff;
+    --glass: rgba(255,255,255,0.02);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  body{margin:0;background:linear-gradient(180deg,var(--bg),#050506);color:#fff;}
+  .container{max-width:1000px;margin:36px auto;padding:20px;}
+  header{display:flex;gap:20px;align-items:center;}
+  .brand{font-size:20px;font-weight:700;letter-spacing:0.4px}
+  .hero{margin-top:18px;display:grid;grid-template-columns:1fr 360px;gap:20px}
+  .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 20px rgba(0,0,0,0.6)}
+  .upload label{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
+  input[type="text"], input[type="file"]{width:100%;padding:10px;border-radius:8px;background:var(--glass);border:1px solid rgba(255,255,255,0.03);color:#fff}
+  button{padding:10px 14px;border-radius:9px;border:0;background:linear-gradient(90deg,var(--accent),#7ad4ff);color:#001;cursor:pointer;font-weight:700}
+  .tracks{margin-top:18px;display:grid;gap:10px}
+  .track{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px; background:linear-gradient(180deg, rgba(255,255,255,0.015), transparent)}
+  .track .meta{flex:1}
+  .title{font-weight:700}
+  .desc{font-size:13px;color:var(--muted);margin-top:4px}
+  .playbtn{padding:8px 10px;border-radius:8px;border:0;background:transparent;color:var(--accent);cursor:pointer;font-weight:700}
+  footer.player{position:fixed;left:0;right:0;bottom:12px;margin:auto;max-width:1000px;padding:10px;background:linear-gradient(90deg,#0a0a0b66,#0a0a0b66);border-radius:12px;display:flex;align-items:center;gap:12px}
+  audio{width:100%}
+  .small{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <div class="brand">Producer Riyadh</div>
+        <div class="small">Beats • TV graphics • Producer hub</div>
+      </div>
+      <div style="margin-left:auto" class="small">Instant demo • Replace with your links</div>
+    </header>
+
+    <div class="hero">
+      <div>
+        <div class="card">
+          <h3>Featured</h3>
+          <p class="small">Play the top track or use the player below.</p>
+          <div style="margin-top:12px" id="featured"></div>
+          <hr style="border:none;height:1px;background:#111;margin:18px 0">
+          <h4>All Tracks</h4>
+          <div class="tracks" id="tracksList">Loading tracks...</div>
+        </div>
+
+        <div style="height:18px"></div>
+
+        <div class="card" style="margin-top:12px">
+          <h4>About</h4>
+          <p class="small">Producer | TV Graphics | Beats maker. Upload demos here so clients can listen, download (optional), and enjoy.</p>
+        </div>
+      </div>
+
+      <!-- Upload panel -->
+      <aside class="card">
+        <h4>Upload Track</h4>
+        <div class="upload">
+          <label>Title</label>
+          <input id="title" type="text" placeholder="Track name (e.g. 'Late Night Beat')" />
+          <label style="margin-top:10px">File (mp3 / wav)</label>
+          <input id="file" type="file" accept="audio/*" />
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button id="uploadBtn">Upload</button>
+            <button id="refreshBtn" style="background:transparent;color:var(--accent);border:1px solid rgba(255,255,255,0.04)">Refresh</button>
+          </div>
+          <p class="small" style="margin-top:8px">Tip: Keep filenames short. For production, use server-signed uploads for safety.</p>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- bottom player -->
+  <footer class="player card" id="playerWrap" style="display:none">
+    <div style="width:48px">
+      <button id="playerPlay" class="playbtn">Play</button>
+    </div>
+    <div style="flex:1">
+      <div id="playerTitle" class="title">No track</div>
+      <audio id="audio" controls preload="none"></audio>
+    </div>
+    <div style="width:120px;text-align:right" class="small">Producer Riyadh</div>
+  </footer>
+
+<script type="module">
+  // ========== CONFIG - REPLACE THESE ==========
+  const SUPABASE_URL = 'https://REPLACE_WITH_YOUR_SUPABASE_URL';
+  const SUPABASE_ANON_KEY = 'REPLACE_WITH_YOUR_SUPABASE_ANON_KEY';
+  const BUCKET = 'tracks'; // create this bucket in Supabase Storage (public recommended for demo)
+  // ============================================
+
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Elements
+  const tracksList = document.getElementById('tracksList');
+  const featured = document.getElementById('featured');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const fileInput = document.getElementById('file');
+  const titleInput = document.getElementById('title');
+
+  const playerWrap = document.getElementById('playerWrap');
+  const audioEl = document.getElementById('audio');
+  const playerTitle = document.getElementById('playerTitle');
+  const playerPlay = document.getElementById('playerPlay');
+
+  uploadBtn.onclick = async () => {
+    const file = fileInput.files?.[0];
+    const title = (titleInput.value || file?.name || 'untitled').trim();
+    if (!file) { alert('Pick an audio file first'); return; }
+
+    const ext = file.name.split('.').pop();
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+    const filename = `${Date.now()}-${slug}.${ext}`;
+
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading...';
+
+    // Direct upload to Supabase storage
+    const { data, error } = await supabase.storage.from(BUCKET).upload(filename, file, {
+      cacheControl: '3600',
+      upsert: false
+    });
+
+    if (error) {
+      console.error('Upload error', error);
+      alert('Upload failed: ' + error.message);
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = 'Upload';
+      return;
+    }
+
+    // Optionally, you could save metadata to a DB table. For this demo we just list storage files.
+    alert('Uploaded ✅');
+    titleInput.value = '';
+    fileInput.value = '';
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Upload';
+    await listTracks();
+  };
+
+  refreshBtn.onclick = listTracks;
+
+  async function listTracks() {
+    tracksList.innerHTML = 'Loading...';
+    featured.innerHTML = '';
+    const { data, error } = await supabase.storage.from(BUCKET).list('', { limit: 100, offset: 0, sortBy: { column: 'name', order: 'desc' }});
+    if (error) {
+      console.error(error);
+      tracksList.innerHTML = 'Could not load tracks';
+      return;
+    }
+    if (!data || data.length === 0) {
+      tracksList.innerHTML = '<div class="small">No tracks yet — upload one on the right.</div>';
+      featured.innerHTML = '';
+      return;
+    }
+
+    // show latest as featured
+    const latest = data[0];
+    const latestUrl = supabase.storage.from(BUCKET).getPublicUrl(latest.name).publicURL;
+    featured.innerHTML = `
+      <div class="track">
+        <div class="meta">
+          <div class="title">${humanize(latest.name)}</div>
+          <div class="desc small">Uploaded: ${new Date(latest.created_at).toLocaleString()}</div>
+        </div>
+        <div><button class="playbtn" data-url="${latestUrl}" data-name="${humanize(latest.name)}">▶ Play</button></div>
+      </div>
+    `;
+
+    tracksList.innerHTML = '';
+    data.forEach(f => {
+      const url = supabase.storage.from(BUCKET).getPublicUrl(f.name).publicURL;
+      const div = document.createElement('div');
+      div.className = 'track';
+      div.innerHTML = `
+        <div class="meta">
+          <div class="title">${humanize(f.name)}</div>
+          <div class="desc small">Size: ${formatBytes(f.size)} • Created ${new Date(f.created_at).toLocaleDateString()}</div>
+        </div>
+        <div>
+          <button class="playbtn" data-url="${url}" data-name="${humanize(f.name)}">Play</button>
+          <a class="small" href="${url}" download style="display:inline-block;margin-left:8px;color:var(--muted)">Download</a>
+        </div>
+      `;
+      tracksList.appendChild(div);
+    });
+
+    // attach handlers
+    document.querySelectorAll('.playbtn').forEach(btn => {
+      btn.onclick = () => {
+        const url = btn.dataset.url;
+        const name = btn.dataset.name;
+        playTrack(url, name);
+      }
+    });
+  }
+
+  function playTrack(url, name) {
+    audioEl.src = url;
+    playerTitle.textContent = name;
+    playerWrap.style.display = 'flex';
+    audioEl.play().catch(()=>{/*autoplay blocked maybe*/});
+    playerPlay.textContent = 'Pause';
+  }
+
+  // bottom player play/pause
+  playerPlay.onclick = () => {
+    if (audioEl.paused) { audioEl.play(); playerPlay.textContent = 'Pause'; }
+    else { audioEl.pause(); playerPlay.textContent = 'Play'; }
+  }
+
+  function humanize(filename){
+    // remove timestamp and extension
+    return filename.replace(/^\d+-/, '').replace(/\.[^.]+$/, '').replace(/-/g,' ').slice(0,60);
+  }
+  function formatBytes(bytes, decimals = 1) {
+    if (!+bytes) return '0 B';
+    const k = 1024, dm = decimals < 0 ? 0 : decimals, sizes = ['B','KB','MB','GB','TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  }
+
+  // initial load
+  listTracks();
+
+</script>
+</body>
+</html>
